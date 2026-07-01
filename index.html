@@ -25,6 +25,7 @@
     --coral:#FFD9C7; --coral-deep:#E8703A;
     --violet:#E6D6FF; --violet-deep:#8B4FE8;
     --amber:#FFE7A0; --amber-deep:#D98A00;
+    --indigo:#D6E0FF; --indigo-deep:#5B6EE8;
     --plum:#3E2247; --plum-soft:#6B5476;
     --cream:#FFFAF3;
     --navy:#1B1B3A; --navy2:#242456;
@@ -72,6 +73,20 @@
   .track-card .emoji{font-size:2rem;}
   .track-card h3{font-size:1rem; margin-top:6px;}
   .track-card p{font-size:.8rem; color:var(--plum-soft); margin-top:4px;}
+
+  .interest-head{margin-top:22px; font-weight:800; font-size:.85rem; color:var(--plum-soft);}
+  .interest-choice{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; justify-content:center;}
+  .interest-chip{border:2.5px solid var(--plum); border-radius:100px; padding:8px 14px; background:#fff; cursor:pointer;
+    font-family:'Baloo 2',cursive; font-weight:700; font-size:.85rem; color:var(--plum);}
+  .interest-chip.selected{background:var(--lavender-deep); color:#fff; border-color:var(--lavender-deep);}
+
+  .reco-banner{max-width:1000px; margin:0 auto 20px; background:linear-gradient(135deg, var(--lavender), var(--sky));
+    border:3px solid var(--plum); border-radius:20px; padding:16px 20px;}
+  .reco-banner h4{font-size:.95rem; margin-bottom:6px;}
+  .reco-banner .reco-jumps{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
+  .reco-jump-btn{font-family:'Baloo 2',cursive; font-weight:700; font-size:.8rem; border:2px solid var(--plum);
+    background:#fff; border-radius:100px; padding:6px 14px; cursor:pointer;}
+  .reco-badge{margin-left:4px; font-size:.85rem;}
   .onboard-start{margin-top:22px; width:100%; padding:14px; border:none; border-radius:100px; background:var(--pink-deep);
     color:#fff; font-family:'Baloo 2',cursive; font-weight:700; font-size:1.05rem; cursor:pointer; box-shadow:0 6px 0 #b8365e;}
   .onboard-start:active{transform:translateY(4px); box-shadow:none;}
@@ -303,6 +318,10 @@
     <label>Име на детето</label>
     <input type="text" id="settingsName">
   </div>
+  <div class="settings-row">
+    <label>Интереси (за твоето дърво на ученето)</label>
+    <div class="interest-choice" id="settingsInterests"></div>
+  </div>
   <button class="btn-save" id="saveSettings">Запази</button>
   <div class="settings-row">
     <label>Прогрес — Курс 6+</label>
@@ -325,21 +344,35 @@
 
 <script>
 /* ============================= STORAGE HELPERS ============================= */
+/* window.storage only exists inside certain sandboxed preview embeds. On a real
+   deployment (GitHub Pages, etc.) it's undefined, so every read/write falls back
+   to localStorage — that's what actually persists progress for real players. */
 async function loadJSON(key, fallback){
   try{
-    const res = await window.storage.get(key, false);
-    if(res && res.value) return JSON.parse(res.value);
-    return fallback;
+    if(window.storage){
+      const res = await window.storage.get(key, false);
+      if(res && res.value) return JSON.parse(res.value);
+      return fallback;
+    }
+  }catch(e){ /* window.storage present but unusable here - fall through to localStorage */ }
+  try{
+    const raw = localStorage.getItem('kokoKod_' + key);
+    return raw ? JSON.parse(raw) : fallback;
   }catch(e){ return fallback; }
 }
 async function saveJSON(key, obj){
-  try{ await window.storage.set(key, JSON.stringify(obj), false); }
+  try{
+    if(window.storage){ await window.storage.set(key, JSON.stringify(obj), false); return; }
+  }catch(e){ /* fall through to localStorage */ }
+  try{ localStorage.setItem('kokoKod_' + key, JSON.stringify(obj)); }
   catch(e){ console.error('Storage save failed', key, e); }
 }
 
 /* ============================= AUDIO NARRATION (Web Speech API) ============================= */
 /* Priority feature for pre-readers (6+ course): reads instructions aloud on tap. */
 let bgVoice = null;
+let ttsUtterance = null; // keep a strong reference - Chrome silently drops speech if the
+                          // SpeechSynthesisUtterance gets garbage-collected mid-utterance
 if(window.speechSynthesis){
   const pickVoice = () => {
     try{
@@ -349,18 +382,31 @@ if(window.speechSynthesis){
   };
   pickVoice();
   try{ window.speechSynthesis.onvoiceschanged = pickVoice; }catch(e){}
+  // Chrome has a long-standing bug where speech silently pauses ~15s in and never
+  // resumes on its own - nudge it periodically so longer instructions finish playing.
+  setInterval(() => {
+    try{ if(window.speechSynthesis.speaking){ window.speechSynthesis.pause(); window.speechSynthesis.resume(); } }
+    catch(e){}
+  }, 5000);
 }
 function speakText(text){
   if(!window.speechSynthesis || !text) return;
   try{
-    window.speechSynthesis.cancel();
     const clean = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}]/gu, '').replace(/\s+/g,' ').trim();
     if(!clean) return;
+    window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(clean);
-    utter.lang = 'bg-BG';
-    if(bgVoice) utter.voice = bgVoice;
+    // Only force the bg-BG locale when a matching voice actually exists - on many
+    // Android/Chrome setups without a Bulgarian voice pack, forcing an unmatched
+    // lang makes speak() a silent no-op instead of falling back to a default voice.
+    if(bgVoice){ utter.voice = bgVoice; utter.lang = bgVoice.lang; }
     utter.rate = 0.92; utter.pitch = 1.05;
-    window.speechSynthesis.speak(utter);
+    ttsUtterance = utter;
+    // cancel() clears the queue asynchronously; speaking again in the very same tick
+    // can get silently dropped by some browsers, so give it a moment to actually clear.
+    setTimeout(() => {
+      try{ window.speechSynthesis.speak(utter); }catch(e){}
+    }, 30);
   }catch(e){ /* speech not supported in this browser - fail silently, button just won't speak */ }
 }
 
@@ -388,8 +434,18 @@ window.addEventListener('appinstalled', () => {
   if(btn) btn.classList.add('hidden');
 });
 
+/* ============================= INTERESTS (learning tree by interest) ============================= */
+const INTERESTS = [
+  {id:'space', emoji:'🚀', label:'Космос'},
+  {id:'art', emoji:'🎨', label:'Изкуство'},
+  {id:'animals', emoji:'🐾', label:'Животни'},
+  {id:'games', emoji:'🎮', label:'Игри'},
+  {id:'logic', emoji:'🧩', label:'Логика'},
+  {id:'story', emoji:'📖', label:'Приказки'}
+];
+
 /* ============================= APP STATE ============================= */
-let profile = null; // {name, activeTrack}
+let profile = null; // {name, activeTrack, interests:[]}
 let progressA = null; // {unlocked:[], stars:[], lastLevel:0}
 let progressB = null; // {unlocked:[], stars:[], lastLesson:0}
 
@@ -409,6 +465,7 @@ async function boot(){
 
 function renderOnboarding(){
   let chosenTrack = 'A';
+  const chosenInterests = new Set();
   onboardRoot.innerHTML = `
   <div class="onboard">
     <div class="onboard-card">
@@ -428,6 +485,10 @@ function renderOnboarding(){
           <p>Луна, Бо и Мия — истински основи на програмирането.</p>
         </div>
       </div>
+      <div class="interest-head">От какво се интересуваш? (по избор — оформя твоето дърво на ученето)</div>
+      <div class="interest-choice" id="interestChoice">
+        ${INTERESTS.map(it => `<button type="button" class="interest-chip" data-id="${it.id}">${it.emoji} ${it.label}</button>`).join('')}
+      </div>
       <button class="onboard-start" id="startBtn" disabled>Да започваме!</button>
     </div>
   </div>`;
@@ -439,8 +500,15 @@ function renderOnboarding(){
   nameInput.addEventListener('input', refresh);
   cardA.addEventListener('click', () => { chosenTrack='A'; cardA.classList.add('selected'); cardB.classList.remove('selected'); });
   cardB.addEventListener('click', () => { chosenTrack='B'; cardB.classList.add('selected'); cardA.classList.remove('selected'); });
+  document.querySelectorAll('#interestChoice .interest-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const id = chip.dataset.id;
+      if(chosenInterests.has(id)){ chosenInterests.delete(id); chip.classList.remove('selected'); }
+      else { chosenInterests.add(id); chip.classList.add('selected'); }
+    });
+  });
   startBtn.addEventListener('click', async () => {
-    profile = { name: nameInput.value.trim() || 'Приятелко', activeTrack: chosenTrack };
+    profile = { name: nameInput.value.trim() || 'Приятелко', activeTrack: chosenTrack, interests: [...chosenInterests] };
     await saveJSON('profile', profile);
     await enterApp();
   });
@@ -449,6 +517,7 @@ function renderOnboarding(){
 async function enterApp(){
   onboardRoot.innerHTML = '';
   appShell.classList.remove('hidden');
+  if(!Array.isArray(profile.interests)) profile.interests = [];
   document.getElementById('childNameLabel').textContent = profile.name;
   progressA = await loadJSON('progressA', null);
   progressB = await loadJSON('progressB', null);
@@ -474,7 +543,7 @@ async function switchTrack(track){
   document.getElementById('tabB').classList.toggle('active', track==='B');
   appRoot.innerHTML = `<div class="loading-screen"><div class="spin">🐾</div></div>`;
   if(track === 'A'){
-    if(!progressA) progressA = { unlocked:[true,false,false,false,false], stars:[false,false,false,false,false], lastLevel:0 };
+    if(!progressA) progressA = { unlocked:TrackA.defaultUnlocked(), stars:TrackA.defaultStars(), lastLevel:0 };
     TrackA.mount(appRoot, progressA, async (p) => { progressA = p; await saveJSON('progressA', progressA); });
   } else {
     if(!progressB) progressB = { unlocked:TrackB.defaultUnlocked(), stars:TrackB.defaultStars(), lastLesson:0 };
@@ -486,8 +555,22 @@ async function switchTrack(track){
 function setupSettings(){
   const panel = document.getElementById('settingsPanel');
   const overlay = document.getElementById('settingsOverlay');
+  const interestsWrap = document.getElementById('settingsInterests');
+  interestsWrap.innerHTML = INTERESTS.map(it => `<button type="button" class="interest-chip" data-id="${it.id}">${it.emoji} ${it.label}</button>`).join('');
+  let settingsInterestSet = new Set();
+  interestsWrap.querySelectorAll('.interest-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const id = chip.dataset.id;
+      if(settingsInterestSet.has(id)){ settingsInterestSet.delete(id); chip.classList.remove('selected'); }
+      else { settingsInterestSet.add(id); chip.classList.add('selected'); }
+    });
+  });
   document.getElementById('settingsBtn').addEventListener('click', () => {
     document.getElementById('settingsName').value = profile.name;
+    settingsInterestSet = new Set(profile.interests || []);
+    interestsWrap.querySelectorAll('.interest-chip').forEach(chip => {
+      chip.classList.toggle('selected', settingsInterestSet.has(chip.dataset.id));
+    });
     panel.classList.remove('hidden'); overlay.classList.remove('hidden');
   });
   function closeIt(){ panel.classList.add('hidden'); overlay.classList.add('hidden'); }
@@ -495,12 +578,16 @@ function setupSettings(){
   overlay.addEventListener('click', closeIt);
   document.getElementById('saveSettings').addEventListener('click', async () => {
     const val = document.getElementById('settingsName').value.trim();
-    if(val){ profile.name = val; await saveJSON('profile', profile); document.getElementById('childNameLabel').textContent = profile.name; }
+    if(val) profile.name = val;
+    profile.interests = [...settingsInterestSet];
+    await saveJSON('profile', profile);
+    document.getElementById('childNameLabel').textContent = profile.name;
+    if(profile.activeTrack==='B') switchTrack('B');
     closeIt();
   });
   document.getElementById('resetA').addEventListener('click', async () => {
     if(!confirm('Да изчистя ли прогреса за Курс 6+?')) return;
-    progressA = { unlocked:[true,false,false,false,false], stars:[false,false,false,false,false], lastLevel:0 };
+    progressA = { unlocked:TrackA.defaultUnlocked(), stars:TrackA.defaultStars(), lastLevel:0 };
     await saveJSON('progressA', progressA);
     if(profile.activeTrack==='A') switchTrack('A');
   });
@@ -531,13 +618,60 @@ const TrackA = (function(){
     { title:"Голямото предизвикателство", text:"Използвай завои и повторения, за да преведеш Роби през целия лабиринт.",
       tip:"💡 Съвет: раздели пътя на къси прави отсечки.", hint:"Реши го така: избери x4 и ⬆️, после избери x4 и ➡️.",
       rows:5, cols:5, start:[4,0], goal:[0,4],
-      walls:[[4,1],[3,1],[2,1],[1,3],[2,3],[3,3]], par:5, showMultiplier:true }
+      walls:[[4,1],[3,1],[2,1],[1,3],[2,3],[3,3]], par:5, showMultiplier:true },
+    { title:"Роби открива нова планета", text:"Приключението продължава на нова планета! Камъните тук са подредени различно — намери пътя нагоре и надясно.",
+      tip:"💡 Съвет: избери x4 и качи Роби нагоре, после избери x4 и го премести надясно.", hint:"Реши го така: избери x4 и ⬆️, после избери x4 и ➡️.",
+      rows:5, cols:5, start:[4,0], goal:[0,4],
+      walls:[[4,2],[3,2],[2,2],[2,3],[2,4]], par:8, showMultiplier:true },
+    { title:"Скритата звезда", text:"Този път звездата се крие зад завой — Роби трябва да завие няколко пъти, за да я стигне.",
+      tip:"💡 Съвет: качи се нагоре, мини надясно, слез надолу и пак надясно, за да заобиколиш камъните.", hint:"Реши го така: избери x4 и ⬆️, после избери x5 и ➡️, после избери x2 и ⬇️, после избери x2 и ⬅️.",
+      rows:5, cols:6, start:[4,0], goal:[2,3],
+      walls:[[4,2],[3,2],[2,2],[1,2],[1,3],[1,4]], par:13, showMultiplier:true },
+    { title:"Пътят покрай стената", text:"Дълга стена препречва горния ред. Роби трябва да намери процепа, преди да продължи към звездата.",
+      tip:"💡 Съвет: качи Роби почти до горе, мини надясно покрай стената, после довърши пътя нагоре.", hint:"Реши го така: избери x4 и ⬆️, после избери x3 и ➡️, после ⬆️ веднъж и ➡️ веднъж.",
+      rows:6, cols:5, start:[5,0], goal:[0,4],
+      walls:[[5,2],[4,2],[3,2],[2,2],[2,3],[2,4],[0,1],[0,2]], par:9, showMultiplier:true },
+    { title:"Слаломът между звездите", text:"Две стени с процепи на различни места! Мини през първия процеп долу и през втория горе.",
+      tip:"💡 Съвет: мини надясно покрай първата стена, после се качи догоре, после продължи надясно.", hint:"Реши го така: избери x3 и ➡️, после избери x5 и ⬆️, после избери x2 и ➡️.",
+      rows:6, cols:6, start:[5,0], goal:[0,5],
+      walls:[[0,2],[1,2],[2,2],[3,2],[4,2],[1,4],[2,4],[3,4],[4,4],[5,4]], par:10, showMultiplier:true },
+    { title:"Финалното пътешествие на Роби", text:"Най-голямото приключение досега! Две дълги стени зигзагообразно — комбинирай завоите и повторенията, за да стигнеш последната звезда.",
+      tip:"💡 Съвет: качи се догоре покрай лявата стена, мини надясно, слез долу покрай дясната стена, мини пак надясно и се качи за финал.", hint:"Реши го така: избери x6 и ⬆️, после x2 и ➡️, после x6 и ⬇️, после x2 и ➡️, после x6 и ⬆️, после ➡️ веднъж.",
+      rows:7, cols:6, start:[6,0], goal:[0,5],
+      walls:[[1,1],[2,1],[3,1],[4,1],[5,1],[6,1],[0,3],[1,3],[2,3],[3,3],[4,3],[5,3]], par:23, showMultiplier:true },
+    { title:"Царството на близалките", text:"Роби намира вратичка към сладко приключение! Царството на близалките е пълно с шоколадови блокчета — прескочи ги и стигни до захарната звезда.",
+      tip:"💡 Съвет: качи Роби нагоре три пъти, после го премести надясно четири пъти.", hint:"Реши го така: избери x3 и ⬆️, после избери x4 и ➡️.",
+      rows:4, cols:5, start:[3,0], goal:[0,4], goalEmoji:"🍭", wallEmoji:"🍫",
+      walls:[[3,2],[2,2]], par:7, showMultiplier:true },
+    { title:"Дълбините на океана", text:"Робо се гмурка в океана! Приятелски октоподи пазят пътя — заобиколи ги внимателно, за да стигнеш до рибката звезда.",
+      tip:"💡 Съвет: качи Роби нагоре четири пъти покрай октоподите, после го отведи надясно четири пъти.", hint:"Реши го така: избери x4 и ⬆️, после избери x4 и ➡️.",
+      rows:5, cols:5, start:[4,0], goal:[0,4], goalEmoji:"🐠", wallEmoji:"🐙",
+      walls:[[4,2],[3,2],[3,3],[1,1],[1,2]], par:8, showMultiplier:true },
+    { title:"Омагьосаната гора", text:"Дърветата в омагьосаната гора растат в редици! Намери процепите между тях, за да стигнеш до вълшебната гъбка.",
+      tip:"💡 Съвет: мини надясно покрай първите дървета, после се качи нагоре и продължи надясно.", hint:"Реши го така: избери x3 и ➡️, после избери x4 и ⬆️, после избери x2 и ➡️.",
+      rows:5, cols:6, start:[4,0], goal:[0,5], goalEmoji:"🍄", wallEmoji:"🌳",
+      walls:[[0,2],[1,2],[2,2],[3,2],[1,4],[2,4],[3,4],[4,4]], par:9, showMultiplier:true },
+    { title:"Замъкът в облаците", text:"Роби се качва по стълба от облаци към омагьосан замък. Облаците са наредени на етапи — качвай се внимателно стъпка по стъпка.",
+      tip:"💡 Съвет: качи се през облаците на етапи — нагоре, после надясно, пак нагоре, пак надясно.", hint:"Реши го така: избери x3 и ⬆️, после избери x2 и ➡️, после избери x2 и ⬆️, после избери x2 и ➡️.",
+      rows:6, cols:5, start:[5,0], goal:[0,4], goalEmoji:"🏰", wallEmoji:"☁️",
+      walls:[[5,2],[4,2],[3,2],[1,1],[0,1],[1,3]], par:9, showMultiplier:true },
+    { title:"Рожденият ден на Роби", text:"Изненада! Всички приятели на Роби подредиха балони в лабиринт за неговото парти. Стигни през завоите до тортата, за да започне купонът!",
+      tip:"💡 Съвет: голямо предизвикателство за партито — раздели пътя на кратки отсечки и следвай завоите покрай балоните.", hint:"Реши го така: избери x5 и ⬆️, после x2 и ➡️, после x5 и ⬇️, после x2 и ➡️, после x5 и ⬆️, после ➡️ веднъж.",
+      rows:6, cols:6, start:[5,0], goal:[0,5], goalEmoji:"🎂", wallEmoji:"🎈",
+      walls:[[1,1],[2,1],[3,1],[4,1],[5,1],[0,3],[1,3],[2,3],[3,3],[4,3]], par:20, showMultiplier:true }
   ];
 
   let state, onSave, container, currentLevel = 0, program = [], activeMult = 1, running = false, encoreStage = false;
 
+  function defaultUnlocked(){ return levels.map((l,i)=> i===0); }
+  function defaultStars(){ return levels.map(()=> false); }
+
   function mount(rootEl, progress, saveFn){
     state = progress; onSave = saveFn; container = rootEl;
+    while(state.unlocked.length < levels.length) state.unlocked.push(false);
+    while(state.stars.length < levels.length) state.stars.push(false);
+    if(state.lastLevel >= levels.length) state.lastLevel = levels.length-1;
+    onSave(state);
     currentLevel = state.lastLevel || 0;
     container.innerHTML = `
       <header class="robi-hero">
@@ -665,8 +799,8 @@ const TrackA = (function(){
       const cell = document.createElement('div'); cell.className='a-cell';
       const isWall = lvl.walls.some(w=>w[0]===r&&w[1]===c);
       const isGoal = lvl.goal[0]===r && lvl.goal[1]===c;
-      if(isWall){ cell.classList.add('wall'); cell.textContent='🪨'; }
-      else if(isGoal){ cell.classList.add('goal'); cell.textContent='⭐'; }
+      if(isWall){ cell.classList.add('wall'); cell.textContent=lvl.wallEmoji || '🪨'; }
+      else if(isGoal){ cell.classList.add('goal'); cell.textContent=lvl.goalEmoji || '⭐'; }
       grid.appendChild(cell);
     }
     const token = document.createElement('div'); token.className='a-robot-token'; token.id='aToken'; token.textContent='🤖';
@@ -748,22 +882,23 @@ const TrackA = (function(){
     setTimeout(()=>{ token.textContent='🤖'; token.style.transition='left .3s ease, top .3s ease'; }, 480);
   }
 
-  return { mount };
+  return { mount, defaultUnlocked, defaultStars };
 })();
 
 /* ============================= TRACK B: 11+ (Koko Kod code lessons) ============================= */
 const TrackB = (function(){
   const chapters = [
-    {n:1, title:'Първи стъпки в приказния код', range:[1,6], color:['var(--pink)','var(--pink-deep)']},
-    {n:2, title:'Условия и избори', range:[7,13], color:['var(--lavender)','var(--lavender-deep)']},
-    {n:3, title:'Магията на повторенията', range:[14,18], color:['var(--mint)','var(--mint-deep)']},
-    {n:4, title:'Списъци и думи', range:[19,22], color:['var(--peach)','var(--peach-deep)']},
-    {n:5, title:'По-сложни трикове', range:[23,26], color:['var(--sky)','var(--sky-deep)']},
-    {n:6, title:'Истински предизвикателства', range:[27,30], color:['var(--gold)','var(--gold-deep)']},
-    {n:7, title:'Обекти и какво следва', range:[31,34], color:['var(--rose)','var(--rose-deep)']},
-    {n:8, title:'Оживей кода — Арената', range:[35,39], color:['var(--coral)','var(--coral-deep)']},
-    {n:9, title:'Книга на четката — рисуване с код', range:[40,43], color:['var(--violet)','var(--violet-deep)']},
-    {n:10, title:'Книга на сътворението — направи игра', range:[44,45], color:['var(--amber)','var(--amber-deep)']}
+    {n:1, title:'Първи стъпки в приказния код', range:[1,6], color:['var(--pink)','var(--pink-deep)'], tags:['story']},
+    {n:2, title:'Условия и избори', range:[7,13], color:['var(--lavender)','var(--lavender-deep)'], tags:['logic']},
+    {n:3, title:'Магията на повторенията', range:[14,18], color:['var(--mint)','var(--mint-deep)'], tags:['logic','games']},
+    {n:4, title:'Списъци и думи', range:[19,22], color:['var(--peach)','var(--peach-deep)'], tags:['story','logic']},
+    {n:5, title:'По-сложни трикове', range:[23,26], color:['var(--sky)','var(--sky-deep)'], tags:['logic']},
+    {n:6, title:'Истински предизвикателства', range:[27,30], color:['var(--gold)','var(--gold-deep)'], tags:['logic','games']},
+    {n:7, title:'Обекти и какво следва', range:[31,34], color:['var(--rose)','var(--rose-deep)'], tags:['games']},
+    {n:8, title:'Оживей кода — Арената', range:[35,39], color:['var(--coral)','var(--coral-deep)'], tags:['games','animals']},
+    {n:9, title:'Книга на четката — рисуване с код', range:[40,43], color:['var(--violet)','var(--violet-deep)'], tags:['art']},
+    {n:10, title:'Книга на сътворението — направи игра', range:[44,45], color:['var(--amber)','var(--amber-deep)'], tags:['games']},
+    {n:11, title:'Книга на звездите — фестивалът продължава', range:[46,49], color:['var(--indigo)','var(--indigo-deep)'], tags:['story','space']}
   ];
   const YN = [{value:'true',label:'Да'},{value:'false',label:'Не'}];
   const DIR_OPTIONS = [
@@ -1228,7 +1363,49 @@ const TrackB = (function(){
    codeLines:['int skorost_padane = {{b1}};   // 1 (бавно) — 8 (бързо)','int zvezdi_za_pobeda = {{b2}};','int shans_za_kamak = {{b3}};   // 0–50 %'],
    blanks:[{id:'b1',kind:'number'},{id:'b2',kind:'number'},{id:'b3',kind:'number'}],
    compile:(v)=>({ speed: Math.min(8, Math.max(1, parseInt(v.b1,10)||3)), winScore: Math.min(30, Math.max(1, parseInt(v.b2,10)||10)), rockChance: Math.min(50, Math.max(0, parseInt(v.b3,10)||20)) }),
-   successMsg:'🏆 Ти си истинска гейм дизайнерка! Играта е готова и победена!'}
+   successMsg:'🏆 Ти си истинска гейм дизайнерка! Играта е готова и победена!'},
+
+  {title:'Обявата за фестивала', type:'blanks',
+   story:'Луна, Бо и Мия решават да организират Фестивал на звездите за целия квартал! Първо пишат обявата — съедини думите с интервал между тях.',
+   fact:'+ съединява (конкатенира) низове в C++ — точно както при пълното име на Мия по-рано.',
+   codeLines:['string obqva = "Фестивал" + {{b1}} + "на звездите";'],
+   blanks:[{id:'b1',kind:'select',options:[{value:'space',label:'" " (интервал)'},{value:'empty',label:'"" (нищо)'},{value:'dash',label:'"-"'}],correct:'space'}],
+   successMsg:'Обявата е готова — „Фестивал на звездите“! 📣✨',
+   sequel:{story:'Бо иска и своя собствена обява за кучешкото шоу — съедини думите по същия начин.',
+     codeLines:['string obqva_bo = "Куче" + {{b1}} + "шоу";'],
+     blanks:[{id:'b1',kind:'select',options:[{value:'space',label:'" " (интервал)'},{value:'empty',label:'"" (нищо)'},{value:'dash',label:'"-"'}],correct:'space'}],
+     successMsg:'Бо ще участва с „Куче шоу“! 🐶🎪'}},
+
+  {title:'Билети за фестивала', type:'blanks',
+   story:'На фестивала идват 6 гости, но първият ред има само 4 места. Провери всеки гост с цикъл и условие, за да преброиш само тези, които сядат отпред.',
+   fact:'Цикъл с условие вътре в него ти позволява да броиш само елементите, които отговарят на определено правило — точно като с високите кученца по-рано.',
+   codeLines:['int mesta_otpred = 0;','for (int i = 0; i < 6; i++) {','  if (i {{b1}} 4) { mesta_otpred = mesta_otpred + 1; }','}','// mesta_otpred = {{b2}}'],
+   blanks:[{id:'b1',kind:'select',options:[{value:'<',label:'<'},{value:'>',label:'>'},{value:'==',label:'=='}],correct:'<'},{id:'b2',kind:'number',correct:4}],
+   successMsg:'Точно 4 гости седят на първия ред! 🎫',
+   sequel:{story:'На втория ден местата отпред станаха 5, а гостите — 7. Провери отново кой сяда отпред.',
+     codeLines:['int mesta_otpred = 0;','for (int i = 0; i < 7; i++) {','  if (i {{b1}} 5) { mesta_otpred = mesta_otpred + 1; }','}','// mesta_otpred = {{b2}}'],
+     blanks:[{id:'b1',kind:'select',options:[{value:'<',label:'<'},{value:'>',label:'>'},{value:'==',label:'=='}],correct:'<'},{id:'b2',kind:'number',correct:5}],
+     successMsg:'Този път 5 гости са на първия ред — местата се увеличиха! 🎫✨'}},
+
+  {title:'Редът на фестивала', type:'order',
+   story:'Фестивалът трябва да протече по ред: първо добре дошли, после трикът на Бо, а накрая — салют от звезди.',
+   fact:'Редът на командите оформя цялата програма — точно както редът на събитията оформя фестивала.',
+   chips:[{id:'a',label:'cout << "Добре дошли на фестивала!";'},{id:'b',label:'cout << "Бо показва трика си!";'},{id:'c',label:'cout << "Салют от звезди!";'}],
+   correctOrder:['a','b','c'], successMsg:'Фестивалът мина перфектно по ред! 🎉',
+   sequel:{story:'На втория ден редът е друг: първо добре дошли, после модно ревю на Мия, а накрая — песента на Луна.',
+     chips:[{id:'a',label:'cout << "Добре дошли, ден 2!";'},{id:'b',label:'cout << "Модно ревю на Мия!";'},{id:'c',label:'cout << "Песента на Луна!";'}],
+     correctOrder:['a','b','c'], successMsg:'Вторият ден на фестивала беше вълшебен! 🎶'}},
+
+  {title:'Приключението продължава отвъд Коко Код', type:'info',
+   story:'Фестивалът на звездите завърши с грандиозен успех — и с него завършва тази книга. Но истинското приключение с код тепърва започва!',
+   fact:'Всичко, което научи тук — променливи, условия, цикли, функции, масиви, класове — е точната основа, върху която са построени истински езици за програмиране.',
+   infoBody:[
+     '🐍 Python е чудесна следваща стъпка — четлив език, използван за игри, изкуствен интелект и анализ на данни.',
+     '🌐 JavaScript оживява сайтове точно като този, който вече разгледахме — с промени в реално време в браузъра.',
+     '🎮 Ако ти хареса Арената и играта със звездите, Unity (C#) и Godot (GDScript) са страхотни следващи спирки за дизайн на игри.',
+     '🚀 Каквото и да избереш — продължавай да строиш, да грешиш и да поправяш. Точно така порасва всеки истински програмист.'
+   ],
+   successMsg:'Ти измина целия път от първата стрелка до собствена игра — истинска програмистка! 🌟👩‍💻'}
   ];
 
   function defaultUnlocked(){ return lessons.map((l,i)=> i===0); }
@@ -1256,6 +1433,7 @@ const TrackB = (function(){
           <p>Всеки урок има обяснение, упражнение, кратък преговор и самостоятелна практика — общо около 15–20 минути. След глава 7 се отключва живата арена за кодиране!</p>
           <button class="hint-btn" id="bReviewBtn" style="margin-top:14px;">🔄 Бърз преговор на стари уроци</button>
         </div>
+        <div id="bRecoBanner"></div>
         <div id="bChapterList"></div>
         <div class="step-progress" id="bStepProgress"></div>
         <div class="b-lesson-panel" id="bPanel">
@@ -1269,11 +1447,34 @@ const TrackB = (function(){
 
   function renderMap(){
     const wrap = container.querySelector('#bChapterList'); wrap.innerHTML = '';
+    const myInterests = (typeof profile !== 'undefined' && profile && Array.isArray(profile.interests)) ? profile.interests : [];
+    const matched = myInterests.length ? chapters.filter(ch => ch.tags && ch.tags.some(t => myInterests.includes(t))) : [];
+    const bannerHost = container.querySelector('#bRecoBanner');
+    if(bannerHost){
+      if(matched.length){
+        const labels = INTERESTS.filter(it => myInterests.includes(it.id)).map(it => it.emoji + ' ' + it.label).join(', ');
+        bannerHost.innerHTML = `<div class="reco-banner">
+          <h4>🌳 Твоето дърво на ученето</h4>
+          <p>Избрала си: ${labels}. Ето главите, които най-много ти пасват — търси значката ✨ по-долу!</p>
+          <div class="reco-jumps">${matched.map(ch => `<button class="reco-jump-btn" data-ch="${ch.n}">${ch.n}. ${ch.title}</button>`).join('')}</div>
+        </div>`;
+        bannerHost.querySelectorAll('.reco-jump-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const ch = chapters.find(c => c.n === parseInt(btn.dataset.ch,10));
+            const idx = ch.range[0]-1;
+            if(state.unlocked[idx]){ current = idx; loadLesson();
+              container.querySelector('#bPanel').scrollIntoView({behavior:'smooth', block:'center'}); }
+            else { container.querySelector(`.b-chapter-block[data-ch="${ch.n}"]`)?.scrollIntoView({behavior:'smooth', block:'center'}); }
+          });
+        });
+      } else bannerHost.innerHTML = '';
+    }
     chapters.forEach(ch => {
-      const block = document.createElement('div'); block.className='b-chapter-block';
+      const block = document.createElement('div'); block.className='b-chapter-block'; block.dataset.ch = ch.n;
       const [bg, deep] = ch.color;
+      const isReco = matched.includes(ch);
       const title = document.createElement('div'); title.className='b-chapter-title';
-      title.innerHTML = `<span class="num" style="background:${deep}">${ch.n}</span><span>${ch.title}</span>`;
+      title.innerHTML = `<span class="num" style="background:${deep}">${ch.n}</span><span>${ch.title}</span>${isReco ? '<span class="reco-badge" title="Препоръчано за теб по интереси">✨</span>' : ''}`;
       block.appendChild(title);
       const row = document.createElement('div'); row.className='b-badge-row';
       for(let id=ch.range[0]; id<=ch.range[1]; id++){
