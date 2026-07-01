@@ -20,10 +20,25 @@ commit history to learn conventions from.
 - **PWA install/offline caching was broken.** `manifest.json` and `service-worker.js` pointed
   at `koko-academy.html`, a file that doesn't exist (the actual file is `index.html`) — this
   broke the install prompt and app-shell precaching.
-- **The "Слушай" (listen) button was silent** on many real devices due to three compounding Web
-  Speech API issues: the utterance getting garbage-collected mid-speech, a `cancel()`+`speak()`
-  race in the same tick, and forcing `lang=bg-BG` with no matching installed voice (silent
-  no-op on some Android/Chrome configs instead of falling back to a default voice).
+- **The "Слушай" (listen) button was silent, then had two regressions from over-fixing it.**
+  First pass fixed a real GC issue (holding a strong reference to the `SpeechSynthesisUtterance`
+  - correct, kept). But it also (a) stopped forcing `utter.lang='bg-BG'` unless a matching
+  voice was found via `getVoices()`, theorizing that forcing an unmatched lang causes a silent
+  no-op on some Android/Chrome setups - in real user testing this was wrong and worse: with no
+  lang set at all, devices without an installed Bulgarian voice fell back to reading Cyrillic
+  text with an English voice/phoneme engine, mangling it and cutting off partway through. And
+  (b) deferred `speak()` by 30ms via `setTimeout` to dodge a desktop-Chrome `cancel()`+`speak()`
+  race, plus added a periodic `pause()`/`resume()` "keep-alive" for a documented Chrome-desktop
+  15s-stall bug - both are real fixes *for that specific desktop bug*, but on the user's mobile
+  device the deferred `speak()` broke the "this call came from a direct tap" gesture
+  requirement (causing total silence specifically on Track A, the first track loaded by
+  default), and the periodic pause/resume likely contributed to the cutting-off. Reverted both:
+  `speak()` is now called synchronously in the click handler, `lang` is always forced to
+  `bg-BG`, and there's no periodic pause/resume. **Lesson**: don't stack multiple speculative
+  fixes for narrow platform-specific bugs without testing on the actual target device/browser -
+  each "fix" here was individually defensible reasoning but wrong in aggregate for this user's
+  real environment. Prefer the simplest implementation that satisfies the one bug you've
+  actually reproduced, over pre-emptively guarding against bugs you've only read about.
 
 ### Feature additions (in rough chronological order)
 - Extended Track A from 5 to 15 to 16 levels (themed: space, candy kingdom, ocean, forest,

@@ -40,12 +40,6 @@ if(window.speechSynthesis){
   };
   pickVoice();
   try{ window.speechSynthesis.onvoiceschanged = pickVoice; }catch(e){}
-  // Chrome has a long-standing bug where speech silently pauses ~15s in and never
-  // resumes on its own - nudge it periodically so longer instructions finish playing.
-  setInterval(() => {
-    try{ if(window.speechSynthesis.speaking){ window.speechSynthesis.pause(); window.speechSynthesis.resume(); } }
-    catch(e){}
-  }, 5000);
 }
 export function speakText(text){
   if(!window.speechSynthesis || !text) return;
@@ -54,17 +48,16 @@ export function speakText(text){
     if(!clean) return;
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(clean);
-    // Only force the bg-BG locale when a matching voice actually exists - on many
-    // Android/Chrome setups without a Bulgarian voice pack, forcing an unmatched
-    // lang makes speak() a silent no-op instead of falling back to a default voice.
-    if(bgVoice){ utter.voice = bgVoice; utter.lang = bgVoice.lang; }
+    // Always tell the engine this is Bulgarian - leaving lang unset makes some
+    // devices fall back to an English voice, which mangles Cyrillic and cuts off.
+    utter.lang = 'bg-BG';
+    if(bgVoice) utter.voice = bgVoice;
     utter.rate = 0.92; utter.pitch = 1.05;
     ttsUtterance = utter;
-    // cancel() clears the queue asynchronously; speaking again in the very same tick
-    // can get silently dropped by some browsers, so give it a moment to actually clear.
-    setTimeout(() => {
-      try{ window.speechSynthesis.speak(utter); }catch(e){}
-    }, 30);
+    // Call speak() synchronously, right in the click handler - deferring it (even by
+    // a few ms via setTimeout) can break the "this came from a real tap" requirement
+    // some mobile browsers enforce for speechSynthesis, causing silent failures.
+    window.speechSynthesis.speak(utter);
   }catch(e){ /* speech not supported in this browser - fail silently, button just won't speak */ }
 }
 
