@@ -10,6 +10,7 @@
     --violet:#E6D6FF; --violet-deep:#8B4FE8;
     --amber:#FFE7A0; --amber-deep:#D98A00;
     --indigo:#D6E0FF; --indigo-deep:#5B6EE8;
+    --confetti-gold:#FFF0C2; --confetti-gold-deep:#C8862B;
     --plum:#3E2247; --plum-soft:#6B5476;
     --cream:#FFFAF3;
     --navy:#1B1B3A; --navy2:#242456;
@@ -297,3 +298,21 @@
   .confetti-piece{position:absolute; top:-20px; width:10px; height:14px; opacity:.9; border-radius:2px;
     animation-name:confetti-fall; animation-timing-function:ease-in; animation-fill-mode:forwards;}
   @keyframes confetti-fall{to{transform:translateY(100vh) rotate(540deg); opacity:0;}}
+
+  /* ===== SECRET EASTER EGG ===== */
+  .app-brand #pawEasterEgg{cursor:pointer; display:inline-block;}
+  .app-brand #pawEasterEgg:active{transform:scale(1.3);}
+  .secret-modal{position:fixed; top:50%; left:50%; z-index:110;
+    background:linear-gradient(135deg, var(--confetti-gold), var(--pink)); border:3px solid var(--plum);
+    border-radius:24px; padding:28px; max-width:440px; width:90vw; max-height:85vh; overflow-y:auto;
+    box-shadow:8px 8px 0 var(--plum); animation:modal-pop-in .4s cubic-bezier(.34,1.56,.64,1) both;}
+  @keyframes modal-pop-in{
+    from{opacity:0; transform:translate(-50%,-50%) scale(.85);}
+    to{opacity:1; transform:translate(-50%,-50%) scale(1);}
+  }
+  .secret-modal .close-x{position:absolute; top:14px; right:14px;}
+  .secret-badge{display:inline-block; background:var(--confetti-gold-deep); color:#fff; font-family:'Baloo 2',cursive;
+    font-weight:700; border-radius:100px; padding:6px 16px; font-size:.85rem; margin-bottom:12px;}
+  .secret-poem{font-family:'Baloo 2',cursive; font-weight:700; font-size:1rem; line-height:1.7; color:var(--plum);}
+  .secret-riddle{margin-top:18px; background:rgba(255,255,255,.6); border-radius:14px; padding:14px; font-size:.9rem;}
+  .secret-answer{margin-top:10px; font-weight:800; color:var(--ok);}

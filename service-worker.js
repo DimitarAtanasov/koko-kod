@@ -1,7 +1,7 @@
 // Коко Код Академия — Service Worker
 // Cache-first app-shell strategy so the app works offline once installed.
 // Bump CACHE_NAME on every real content update to force a refresh for returning users.
-const CACHE_NAME = 'koko-kod-v3';
+const CACHE_NAME = 'koko-kod-v4';
 const APP_SHELL = [
   './index.html',
   './manifest.json',

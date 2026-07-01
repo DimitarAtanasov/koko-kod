@@ -21,7 +21,7 @@
 
 <div id="appShell" class="hidden">
   <nav class="app-nav">
-    <div class="app-brand">🐾 Коко Код Академия</div>
+    <div class="app-brand"><span id="pawEasterEgg" role="button" tabindex="0" aria-label="Тайна изненада">🐾</span> Коко Код Академия</div>
     <div class="app-user">👤 <span id="childNameLabel"></span></div>
     <div class="app-tabs">
       <button class="app-tab" id="tabA">🧸 Курс 6+</button>
@@ -64,10 +64,20 @@
   </div>
 </div>
 
+<div id="secretOverlay" class="overlay-bg hidden"></div>
+<div id="secretModal" class="secret-modal hidden">
+  <button class="close-x" id="closeSecret" aria-label="Затвори">✕</button>
+  <div class="secret-badge">Магистър по лапичкознание</div>
+  <div class="secret-poem">Бип-бип! — пищи Роби — някой тайната ни разкри!<br>Луна мърка: пет лапички ти преброи, нали?<br>Бо подскача весело, Мия вика: ура!<br>Влизай смело в скритата ни звездна игра!<br>Шшшт — това е тайна само между нас:<br>любопитните намират чудеса всеки час!</div>
+  <div class="secret-riddle">
+    <p><strong>🐶 Бо те пита:</strong> Бау-бау! Повтарям се, повтарям се и никога не се уморявам — Роби ме ползва, за да стигне чак до звездите. Какво съм аз?</p>
+    <button class="hint-btn" id="revealRiddleBtn">🔍 Разкрий отговора</button>
+    <p class="secret-answer hidden" id="riddleAnswer">Цикъл! Повторението е суперсилата на всеки програмист — бау!</p>
+  </div>
+</div>
+
 <footer>Коко Код Академия · прогресът се пази автоматично на това устройство 💾</footer>
 
-<script src="js/core.js"></script>
-<script src="js/track-a.js"></script>
-<script src="js/track-b.js"></script>
+<script type="module" src="js/core.js"></script>
 </body>
 </html>

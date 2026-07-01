@@ -1,5 +1,7 @@
+import { speakText, fireConfetti } from './core.js';
+
 /* ============================= TRACK A: 6+ (Robi grid) ============================= */
-const TrackA = (function(){
+export const TrackA = (function(){
   const levels = [
     { title:"Първи стъпки", text:"Роби разбира прости команди. Постави стрелки една по една, за да го заведеш до звездата.",
       tip:"💡 Съвет: тук ти трябва само бутонът ➡️", hint:"Реши го така: натисни ➡️ четири пъти.",
@@ -57,7 +59,12 @@ const TrackA = (function(){
     { title:"Рожденият ден на Роби", text:"Изненада! Всички приятели на Роби подредиха балони в лабиринт за неговото парти. Стигни през завоите до тортата, за да започне купонът!",
       tip:"💡 Съвет: голямо предизвикателство за партито — раздели пътя на кратки отсечки и следвай завоите покрай балоните.", hint:"Реши го така: избери x5 и ⬆️, после x2 и ➡️, после x5 и ⬇️, после x2 и ➡️, после x5 и ⬆️, после ➡️ веднъж.",
       rows:6, cols:6, start:[5,0], goal:[0,5], goalEmoji:"🎂", wallEmoji:"🎈",
-      walls:[[1,1],[2,1],[3,1],[4,1],[5,1],[0,3],[1,3],[2,3],[3,3],[4,3]], par:20, showMultiplier:true }
+      walls:[[1,1],[2,1],[3,1],[4,1],[5,1],[0,3],[1,3],[2,3],[3,3],[4,3]], par:20, showMultiplier:true },
+    { title:"🎁 Тайното съкровище на Роби", text:"Само най-упоритите изследователи виждат това ниво! Роби намери скрита карта — тя води през тройна плетеница от стени до диамант, пазен от Звездна академия Искрилия.",
+      tip:"💡 Съвет: три високи стени с процепи на различни места — качи се, мини, слез, мини пак, качи се за последно. Прошепни си „Стрелко-зум!“ всеки път, когато повтаряш посока — на Роби ще му хареса!", hint:"Реши го така: избери x6 и ⬆️, после x2 и ➡️, после x6 и ⬇️, после x2 и ➡️, после x6 и ⬆️, после x2 и ➡️.",
+      rows:7, cols:7, start:[6,0], goal:[0,6], goalEmoji:"💎", wallEmoji:"🌟", secret:true,
+      walls:[[1,1],[2,1],[3,1],[4,1],[5,1],[6,1],[0,3],[1,3],[2,3],[3,3],[4,3],[5,3],[1,5],[2,5],[3,5],[4,5],[5,5],[6,5]], par:24, showMultiplier:true,
+      secretReveal:"Роби премина и трите слалома и стигна до диаманта — но когато го докосна, диамантът светна и се отвори като врата! Зад нея го чакаха усмихнати звездни магьосници, които му казаха: „Роби, ти реши всички лабиринти — това е истинска звездна магия! Добре дошъл в нашата академия, малък магьоснико на стрелките!“" }
   ];
 
   let state, onSave, container, currentLevel = 0, program = [], activeMult = 1, running = false, encoreStage = false;
@@ -166,7 +173,7 @@ const TrackA = (function(){
     levels.forEach((lvl,i) => {
       const tab = document.createElement('button');
       tab.className = 'a-level-tab' + (i===currentLevel?' active':'') + (!state.unlocked[i]?' locked':'');
-      tab.innerHTML = `Ниво ${i+1} ${state.stars[i] ? '⭐' : ''}`;
+      tab.innerHTML = `${lvl.secret && state.unlocked[i] ? '🎁 ' : ''}Ниво ${i+1} ${state.stars[i] ? '⭐' : ''}`;
       tab.disabled = !state.unlocked[i];
       tab.onclick = () => { currentLevel = i; state.lastLevel = i; onSave(state); loadLevel(); };
       wrap.appendChild(tab);
@@ -265,6 +272,7 @@ const TrackA = (function(){
         msg.textContent = '🎉 Браво! Роби стигна до звездата и втори път — научи го наистина добре!'; msg.className='a-message ok';
         speakText('Браво! Роби стигна до звездата и втори път! Научи го наистина добре.');
         if(currentLevel < levels.length-1){ state.unlocked[currentLevel+1]=true; container.querySelector('#aNext').classList.add('show'); }
+        else if(lvl.secretReveal){ msg.textContent = lvl.secretReveal; speakText(lvl.secretReveal); }
         else msg.textContent += ' 🏆 Завърши всички нива!';
         onSave(state); renderTabs();
         fireConfetti();

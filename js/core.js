@@ -1,3 +1,6 @@
+import { TrackA } from './track-a.js';
+import { TrackB } from './track-b.js';
+
 /* ============================= STORAGE HELPERS ============================= */
 /* window.storage only exists inside certain sandboxed preview embeds. On a real
    deployment (GitHub Pages, etc.) it's undefined, so every read/write falls back
@@ -44,7 +47,7 @@ if(window.speechSynthesis){
     catch(e){}
   }, 5000);
 }
-function speakText(text){
+export function speakText(text){
   if(!window.speechSynthesis || !text) return;
   try{
     const clean = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}]/gu, '').replace(/\s+/g,' ').trim();
@@ -70,7 +73,7 @@ function speakText(text){
    Respects prefers-reduced-motion via the global CSS override, and is skipped
    entirely for that preference so no motion is forced on sensitive users. */
 const CONFETTI_COLORS = ['#FF6FA5','#9B7BFF','#2FB893','#FF9A4D','#4FA1E8','#E3A319','#5B6EE8','#D6467F'];
-function fireConfetti(){
+export function fireConfetti(){
   try{
     if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const layer = document.createElement('div');
@@ -115,7 +118,7 @@ window.addEventListener('appinstalled', () => {
 });
 
 /* ============================= INTERESTS (learning tree by interest) ============================= */
-const INTERESTS = [
+export const INTERESTS = [
   {id:'space', emoji:'🚀', label:'Космос'},
   {id:'art', emoji:'🎨', label:'Изкуство'},
   {id:'animals', emoji:'🐾', label:'Животни'},
@@ -125,7 +128,7 @@ const INTERESTS = [
 ];
 
 /* ============================= APP STATE ============================= */
-let profile = null; // {name, activeTrack, interests:[]}
+export let profile = null; // {name, activeTrack, interests:[]}
 let progressA = null; // {unlocked:[], stars:[], lastLevel:0}
 let progressB = null; // {unlocked:[], stars:[], lastLesson:0}
 
@@ -213,7 +216,38 @@ async function enterApp(){
     document.getElementById('installBtn').classList.add('hidden');
   });
   setupSettings();
+  setupSecretEasterEgg();
   switchTrack(profile.activeTrack || 'A');
+}
+
+/* ============================= SECRET EASTER EGG ============================= */
+/* Tap the paw emoji 5 times in a row (within 2s of the previous tap) to reveal a
+   hidden bonus scene from Robi, Luna, Bo and Mia - purely for delight/discovery. */
+function setupSecretEasterEgg(){
+  const paw = document.getElementById('pawEasterEgg');
+  const overlay = document.getElementById('secretOverlay');
+  const modal = document.getElementById('secretModal');
+  if(!paw || !overlay || !modal) return;
+  let tapCount = 0, lastTap = 0;
+  const openSecret = () => {
+    overlay.classList.remove('hidden'); modal.classList.remove('hidden');
+    fireConfetti();
+    speakText('Бип-бип! Някой намери тайната на Роби, Луна, Бо и Мия!');
+  };
+  const handleTap = () => {
+    const now = Date.now();
+    tapCount = (now - lastTap < 2000) ? tapCount + 1 : 1;
+    lastTap = now;
+    if(tapCount >= 5){ tapCount = 0; openSecret(); }
+  };
+  paw.addEventListener('click', handleTap);
+  paw.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); handleTap(); } });
+  function closeSecret(){ overlay.classList.add('hidden'); modal.classList.add('hidden'); }
+  document.getElementById('closeSecret').addEventListener('click', closeSecret);
+  overlay.addEventListener('click', closeSecret);
+  document.getElementById('revealRiddleBtn').addEventListener('click', () => {
+    document.getElementById('riddleAnswer').classList.remove('hidden');
+  });
 }
 
 async function switchTrack(track){
@@ -279,4 +313,6 @@ function setupSettings(){
     if(profile.activeTrack==='B') switchTrack('B');
   });
 }
+
+boot();
 
