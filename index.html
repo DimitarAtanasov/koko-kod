@@ -34,6 +34,13 @@
   }
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{
+      animation-duration:0.01ms !important; animation-iteration-count:1 !important;
+      transition-duration:0.01ms !important; scroll-behavior:auto !important;
+    }
+  }
+  :focus-visible{outline:3px solid var(--pink-deep); outline-offset:2px;}
   body{margin:0; background:var(--cream); color:var(--plum); font-family:'Nunito',sans-serif;}
   h1,h2,h3{font-family:'Baloo 2',cursive; margin:0;}
   button{font-family:inherit;}
@@ -65,6 +72,7 @@
   .onboard-card .mascots{font-size:2.6rem; margin-bottom:6px;}
   .onboard-card h1{font-size:1.6rem; margin-top:6px;}
   .onboard-card p{color:var(--plum-soft); font-weight:600; margin-top:8px;}
+  .onboard-card .onboard-motto{font-family:'Baloo 2',cursive; font-weight:700; font-style:italic; color:var(--pink-deep); margin-top:2px; font-size:.95rem;}
   .onboard-input{width:100%; margin-top:20px; padding:12px 16px; border-radius:14px; border:2.5px solid var(--plum);
     font-family:'Baloo 2',cursive; font-size:1.05rem; text-align:center;}
   .track-choice{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:20px;}
@@ -191,7 +199,8 @@
   .b-concept-card p{font-size:.9rem; color:var(--plum-soft); margin-top:6px; line-height:1.5;}
 
   .b-chapter-block{margin-bottom:26px;}
-  .b-chapter-title{display:flex; align-items:center; gap:10px; font-size:1.05rem; margin-bottom:10px;}
+  .b-chapter-title{display:flex; align-items:center; gap:10px; font-size:1.05rem; margin-bottom:6px;}
+  .b-chapter-intro{margin:0 0 10px; font-size:.85rem; font-style:italic; color:var(--plum-soft); max-width:60ch; line-height:1.5;}
   .b-chapter-title .num{width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center;
     color:#fff; font-family:'Baloo 2',cursive; font-weight:700; font-size:.9rem;}
   .b-badge-row{display:flex; flex-wrap:wrap; gap:9px;}
@@ -285,10 +294,25 @@
   .step-next:disabled{opacity:.4; cursor:not-allowed; box-shadow:none;}
   .step-back{background:#fff; border:2px solid var(--plum); border-radius:100px; padding:12px 20px;
     font-family:'Baloo 2',cursive; font-weight:700; cursor:pointer;}
-  .complete-card{text-align:center; padding:20px 0;}
+  .complete-card{text-align:center; padding:20px 0; animation:pop-in .45s cubic-bezier(.34,1.56,.64,1) both;}
   .complete-card .big-star{font-size:3rem;}
   .a-encore-banner{margin-top:12px; background:#FFF3D6; border-left:5px solid var(--yellow); border-radius:10px;
     padding:10px 12px; font-size:.86rem; color:#6b5300; font-weight:700;}
+
+  /* ===== ENTRANCE ANIMATIONS ===== */
+  @keyframes fade-slide-up{from{opacity:0; transform:translateY(10px);}to{opacity:1; transform:translateY(0);}}
+  @keyframes pop-in{from{opacity:0; transform:scale(.85);}to{opacity:1; transform:scale(1);}}
+  .b-chapter-block{animation:fade-slide-up .4s ease both;}
+  .a-level-tab{animation:fade-slide-up .35s ease both;}
+  .b-badge{animation:pop-in .3s ease both;}
+  .track-card{animation:fade-slide-up .4s ease both;}
+  .progress-card{animation:fade-slide-up .4s ease both;}
+
+  /* ===== CONFETTI ===== */
+  .confetti-layer{position:fixed; inset:0; pointer-events:none; z-index:200; overflow:hidden;}
+  .confetti-piece{position:absolute; top:-20px; width:10px; height:14px; opacity:.9; border-radius:2px;
+    animation-name:confetti-fall; animation-timing-function:ease-in; animation-fill-mode:forwards;}
+  @keyframes confetti-fall{to{transform:translateY(100vh) rotate(540deg); opacity:0;}}
 </style>
 </head>
 <body>
@@ -305,14 +329,14 @@
     </div>
     <button class="app-continue" id="continueBtn">▶ Продължи</button>
     <button class="app-continue hidden" id="installBtn">📲 Инсталирай</button>
-    <button class="app-settings" id="settingsBtn" title="Настройки">⚙️</button>
+    <button class="app-settings" id="settingsBtn" title="Настройки" aria-label="Настройки">⚙️</button>
   </nav>
   <main id="appRoot"></main>
 </div>
 
 <div id="settingsOverlay" class="overlay-bg hidden"></div>
 <div id="settingsPanel" class="settings-panel hidden">
-  <button class="close-x" id="closeSettings">✕</button>
+  <button class="close-x" id="closeSettings" aria-label="Затвори настройките">✕</button>
   <h3>Настройки</h3>
   <div class="settings-row">
     <label>Име на детето</label>
@@ -410,6 +434,31 @@ function speakText(text){
   }catch(e){ /* speech not supported in this browser - fail silently, button just won't speak */ }
 }
 
+/* ============================= CELEBRATION EFFECT ============================= */
+/* Lightweight, dependency-free confetti burst for level/lesson completion.
+   Respects prefers-reduced-motion via the global CSS override, and is skipped
+   entirely for that preference so no motion is forced on sensitive users. */
+const CONFETTI_COLORS = ['#FF6FA5','#9B7BFF','#2FB893','#FF9A4D','#4FA1E8','#E3A319','#5B6EE8','#D6467F'];
+function fireConfetti(){
+  try{
+    if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const layer = document.createElement('div');
+    layer.className = 'confetti-layer';
+    document.body.appendChild(layer);
+    for(let i=0;i<28;i++){
+      const piece = document.createElement('span');
+      piece.className = 'confetti-piece';
+      piece.style.left = (Math.random()*100) + 'vw';
+      piece.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+      piece.style.animationDelay = (Math.random()*0.3) + 's';
+      piece.style.animationDuration = (1.6 + Math.random()*0.9) + 's';
+      piece.style.transform = `rotate(${Math.random()*360}deg)`;
+      layer.appendChild(piece);
+    }
+    setTimeout(() => layer.remove(), 2800);
+  }catch(e){ /* purely decorative - fail silently */ }
+}
+
 /* ============================= PWA: install + offline support ============================= */
 /* Feature-detected and wrapped in try/catch: this only activates when the file is actually
    hosted at a real origin (e.g. GitHub Pages, Netlify) alongside manifest.json + service-worker.js.
@@ -471,7 +520,8 @@ function renderOnboarding(){
     <div class="onboard-card">
       <div class="mascots">🐱 🐶 👗</div>
       <h1>Добре дошла в Коко Код!</h1>
-      <p>Как се казваш и с кой курс искаш да започнеш? Винаги можеш да смениш по-късно.</p>
+      <p class="onboard-motto">Където приказките учат децата да програмират.</p>
+      <p>Всяко приключение започва с едно име — как се казваш, млад магьоснико? Избери своята пътека: заведи Роби до звездата или тръгни с Луна, Бо и Мия из приказното кралство — а после винаги можеш да смениш пътя.</p>
       <input class="onboard-input" id="nameInput" placeholder="Твоето име" maxlength="20">
       <div class="track-choice">
         <div class="track-card selected" id="cardA">
@@ -694,10 +744,10 @@ const TrackA = (function(){
             </div>
             <div class="hint-box hidden" id="aHintBox"></div>
             <div class="a-cmd-palette">
-              <button class="a-cmd-btn" data-dir="up">⬆️</button>
-              <button class="a-cmd-btn" data-dir="down">⬇️</button>
-              <button class="a-cmd-btn" data-dir="left">⬅️</button>
-              <button class="a-cmd-btn" data-dir="right">➡️</button>
+              <button class="a-cmd-btn" data-dir="up" aria-label="Нагоре">⬆️</button>
+              <button class="a-cmd-btn" data-dir="down" aria-label="Надолу">⬇️</button>
+              <button class="a-cmd-btn" data-dir="left" aria-label="Наляво">⬅️</button>
+              <button class="a-cmd-btn" data-dir="right" aria-label="Надясно">➡️</button>
             </div>
             <div class="a-mult-row" id="aMultRow">
               <span>Повтори:</span>
@@ -715,7 +765,7 @@ const TrackA = (function(){
           </div>
           <div class="a-stage-wrap">
             <div class="a-grid-stage" id="aGrid"></div>
-            <div class="a-message" id="aMsg"></div>
+            <div class="a-message" id="aMsg" role="status"></div>
             <button class="btn btn-primary a-next" id="aNext" style="border:none;background:var(--yellow);color:var(--navy);font-family:'Baloo 2',cursive;font-weight:700;border-radius:100px;padding:10px 20px;cursor:pointer;">Следващо ниво →</button>
           </div>
         </div>
@@ -868,6 +918,7 @@ const TrackA = (function(){
         if(currentLevel < levels.length-1){ state.unlocked[currentLevel+1]=true; container.querySelector('#aNext').classList.add('show'); }
         else msg.textContent += ' 🏆 Завърши всички нива!';
         onSave(state); renderTabs();
+        fireConfetti();
       }
     } else {
       msg.textContent = '🙈 Опа! Роби се блъсна. Оправи програмата и опитай пак.'; msg.className='a-message bad';
@@ -888,17 +939,28 @@ const TrackA = (function(){
 /* ============================= TRACK B: 11+ (Koko Kod code lessons) ============================= */
 const TrackB = (function(){
   const chapters = [
-    {n:1, title:'Първи стъпки в приказния код', range:[1,6], color:['var(--pink)','var(--pink-deep)'], tags:['story']},
-    {n:2, title:'Условия и избори', range:[7,13], color:['var(--lavender)','var(--lavender-deep)'], tags:['logic']},
-    {n:3, title:'Магията на повторенията', range:[14,18], color:['var(--mint)','var(--mint-deep)'], tags:['logic','games']},
-    {n:4, title:'Списъци и думи', range:[19,22], color:['var(--peach)','var(--peach-deep)'], tags:['story','logic']},
-    {n:5, title:'По-сложни трикове', range:[23,26], color:['var(--sky)','var(--sky-deep)'], tags:['logic']},
-    {n:6, title:'Истински предизвикателства', range:[27,30], color:['var(--gold)','var(--gold-deep)'], tags:['logic','games']},
-    {n:7, title:'Обекти и какво следва', range:[31,34], color:['var(--rose)','var(--rose-deep)'], tags:['games']},
-    {n:8, title:'Оживей кода — Арената', range:[35,39], color:['var(--coral)','var(--coral-deep)'], tags:['games','animals']},
-    {n:9, title:'Книга на четката — рисуване с код', range:[40,43], color:['var(--violet)','var(--violet-deep)'], tags:['art']},
-    {n:10, title:'Книга на сътворението — направи игра', range:[44,45], color:['var(--amber)','var(--amber-deep)'], tags:['games']},
-    {n:11, title:'Книга на звездите — фестивалът продължава', range:[46,49], color:['var(--indigo)','var(--indigo-deep)'], tags:['story','space']}
+    {n:1, title:'Първи стъпки в приказния код', range:[1,6], color:['var(--pink)','var(--pink-deep)'], tags:['story'],
+      intro:'Балът в приказното кралство наближава, а Мия, Луна и Бо още не са готови! Помогни им да подредят всяка стъпка по ред — защото в магията на кода редът е всичко.'},
+    {n:2, title:'Условия и избори', range:[7,13], color:['var(--lavender)','var(--lavender-deep)'], tags:['logic'],
+      intro:'На кръстопът в омагьосаната гора Луна мяука: наляво или надясно? Научи героите да избират мъдро — понеже всеки път крие различно приключение.'},
+    {n:3, title:'Магията на повторенията', range:[14,18], color:['var(--mint)','var(--mint-deep)'], tags:['logic','games'],
+      intro:'Бо е открил вълшебно колело, което върти нещата отново и отново! Защо да повтаряш сто пъти сам, когато магията на повторението може да го направи вместо теб?'},
+    {n:4, title:'Списъци и думи', range:[19,22], color:['var(--peach)','var(--peach-deep)'], tags:['story','logic'],
+      intro:'В кулата на кралството има безкраен рафт с думи и съкровища, а Мия трябва да ги подреди едно до друго. Ела да ѝ помогнеш — всяко нещо си има място и номер!'},
+    {n:5, title:'По-сложни трикове', range:[23,26], color:['var(--sky)','var(--sky-deep)'], tags:['logic'],
+      intro:'Магията става по-дълбока — заклинание вътре в заклинание! Луна, Бо и Мия навлизат в тайните зали на замъка, където само най-хитрите трикове отварят вратите.'},
+    {n:6, title:'Истински предизвикателства', range:[27,30], color:['var(--gold)','var(--gold-deep)'], tags:['logic','games'],
+      intro:'В кралството се е промъкнала пакостлива грешчица и обърква магиите! Мия, Луна и Бо тръгват на истинско приключение — да я открият, поправят и станат герои на деня.'},
+    {n:7, title:'Обекти и какво следва', range:[31,34], color:['var(--rose)','var(--rose-deep)'], tags:['games'],
+      intro:'Мия открива, че всяко нещо в кралството — от котето Луна до летящите фенери — си има свои тайни умения. Време е да сътвориш собствени вълшебни създания!'},
+    {n:8, title:'Оживей кода — Арената', range:[35,39], color:['var(--coral)','var(--coral-deep)'], tags:['games','animals'],
+      intro:'Тръбите свирят — Арената се отваря! Тук магиите оживяват пред очите ти: напиши заклинание и гледай как героят ти наистина се раздвижва.'},
+    {n:9, title:'Книга на четката — рисуване с код', range:[40,43], color:['var(--violet)','var(--violet-deep)'], tags:['art'],
+      intro:'Луна намери вълшебна четка, която рисува само когато ѝ прошепнеш точните думи. Нарисувай звезди, кули и дъги — с код вместо с бои!'},
+    {n:10, title:'Книга на сътворението — направи игра', range:[44,45], color:['var(--amber)','var(--amber-deep)'], tags:['games'],
+      intro:'Мия, Луна и Бо имат смела идея — да сътворят своя собствена игра! От небето ще валят звезди, а ти ще решиш как се лови всяка една.'},
+    {n:11, title:'Книга на звездите — фестивалът продължава', range:[46,49], color:['var(--indigo)','var(--indigo-deep)'], tags:['story','space'],
+      intro:'Фенерите светват, музиката засвирва — големият фестивал на кода започва! Мия, Луна и Бо те чакат на площада, а отвъд портите блестят цели нови светове, готови за истински магьосник като теб.'}
   ];
   const YN = [{value:'true',label:'Да'},{value:'false',label:'Не'}];
   const DIR_OPTIONS = [
@@ -1476,6 +1538,10 @@ const TrackB = (function(){
       const title = document.createElement('div'); title.className='b-chapter-title';
       title.innerHTML = `<span class="num" style="background:${deep}">${ch.n}</span><span>${ch.title}</span>${isReco ? '<span class="reco-badge" title="Препоръчано за теб по интереси">✨</span>' : ''}`;
       block.appendChild(title);
+      if(ch.intro){
+        const intro = document.createElement('p'); intro.className='b-chapter-intro'; intro.textContent = ch.intro;
+        block.appendChild(intro);
+      }
       const row = document.createElement('div'); row.className='b-badge-row';
       for(let id=ch.range[0]; id<=ch.range[1]; id++){
         const idx = id-1;
@@ -1599,7 +1665,7 @@ const TrackB = (function(){
           <button class="b-btn-run" id="bCheck">✔ Провери</button>
           <button class="b-btn-reset" id="bReset">Изчисти</button>
         </div>
-        <div class="b-message" id="bMsg"></div>
+        <div class="b-message" id="bMsg" role="status"></div>
         <div class="step-nav"><button class="step-next" id="stepNextBtn" disabled>Напред →</button></div>`;
       right.innerHTML = `<div class="b-stage-title">Код</div><div class="b-code-block" id="bStage"></div>`;
       renderExerciseStage(lesson, ex);
@@ -1618,7 +1684,7 @@ const TrackB = (function(){
         <div class="b-action-row">
           <button class="b-btn-run" id="bLiveRun">▶ Изпълни кода</button>
         </div>
-        <div class="a-message" id="bLiveMsg"></div>
+        <div class="a-message" id="bLiveMsg" role="status"></div>
         <div class="step-nav"><button class="step-next" id="stepNextBtn" disabled>Напред →</button></div>`;
       right.innerHTML = `<div class="b-stage-title">Твоят код</div><div class="b-code-block" id="bLiveCode"></div>
         <div class="b-stage-title" style="margin-top:14px;">Терен на живо</div>
@@ -1639,7 +1705,7 @@ const TrackB = (function(){
           <button class="b-btn-run" id="bDrawRun">🖌️ Нарисувай</button>
           <button class="b-btn-reset" id="bDrawClear">Изчисти платното</button>
         </div>
-        <div class="a-message" id="bDrawMsg"></div>
+        <div class="a-message" id="bDrawMsg" role="status"></div>
         <div class="step-nav"><button class="step-next" id="stepNextBtn" disabled>Напред →</button></div>`;
       right.innerHTML = `<div class="b-stage-title">Твоят код</div><div class="b-code-block" id="bDrawCode"></div>
         <div class="b-stage-title" style="margin-top:14px;">Платно</div>
@@ -1659,7 +1725,7 @@ const TrackB = (function(){
         <div class="b-action-row">
           <button class="b-btn-run" id="bGameRun">🎮 Играй!</button>
         </div>
-        <div class="a-message" id="bGameMsg"></div>
+        <div class="a-message" id="bGameMsg" role="status"></div>
         <div class="step-nav"><button class="step-next" id="stepNextBtn" disabled>Напред →</button></div>`;
       right.innerHTML = `<div class="b-stage-title">Настройки на играта</div><div class="b-code-block" id="bGameCode"></div>
         <div class="b-stage-title" style="margin-top:14px;">Играй тук</div>
@@ -1681,7 +1747,7 @@ const TrackB = (function(){
       left.innerHTML = `${badgeHtml}<div class="step-kicker">Бърз преговор</div>
         <div class="quiz-question">Кое от следните е вярно за този урок?</div>
         <div id="quizOpts"></div>
-        <div class="b-message" id="bQuizMsg"></div>
+        <div class="b-message" id="bQuizMsg" role="status"></div>
         <div class="step-nav"><button class="step-next" id="stepNextBtn" disabled>Напред →</button></div>`;
       const optsWrap = container.querySelector('#quizOpts');
       const quizMsg = container.querySelector('#bQuizMsg');
@@ -1741,6 +1807,7 @@ const TrackB = (function(){
       state.stars[current] = true;
       if(current < lessons.length-1) state.unlocked[current+1] = true;
       onSave(state); renderMap();
+      fireConfetti();
     }
     renderStep();
   }
@@ -2212,7 +2279,7 @@ const TrackB = (function(){
       <button class="audio-btn" id="reviewAudioBtn" style="margin-bottom:10px;">🔊 Слушай</button>
       <div class="quiz-question">Кое от следните е вярно?</div>
       <div id="reviewOpts"></div>
-      <div class="b-message" id="reviewMsg"></div>`;
+      <div class="b-message" id="reviewMsg" role="status"></div>`;
     container.querySelector('#reviewAudioBtn').addEventListener('click', () => speakText(lesson.fact));
     const optsWrap = container.querySelector('#reviewOpts');
     const msgEl = container.querySelector('#reviewMsg');
