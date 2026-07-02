@@ -24,10 +24,39 @@ Plain HTML/CSS/JS, native ES modules, **zero build step**:
   confetti effect, interests constant, onboarding/settings, `boot()`. Imports `TrackA` from
   `track-a.js` and `TrackB` from `track-b.js` to wire up `switchTrack()`.
 - `js/track-a.js` — Robi track. Imports `speakText`/`fireConfetti` from `core.js`.
-- `js/track-b.js` — Luna/Bo/Mia track. Imports `INTERESTS`/`fireConfetti`/`profile`/`speakText`
-  from `core.js`.
+- `js/track-b.js` — Luna/Bo/Mia track **orchestrator only**: `mount()`, chapter-map rendering,
+  `buildSteps()`/`loadLesson()`/`renderStep()`/`goNext()` step navigation. Imports
+  `INTERESTS`/`fireConfetti`/`profile`/`speakText` from `core.js`, plus the section modules
+  below. Split out of a single 1422-line file on 2026-07-02 — see `memory.md`.
+- `js/track-b-data.js` — `chapters[]`/`lessons[]` data plus `chapterFor`/`defaultUnlocked`/
+  `defaultStars`. No DOM/container dependency.
+- `js/track-b-live.js` — chapter 8 "Arena" live-coding rendering/execution (`renderLiveBlanks`,
+  `buildLiveGrid`, `runLive`, `delay`).
+- `js/track-b-draw.js` — chapter 9 turtle-drawing rendering/execution. Imports `delay` from
+  `track-b-live.js`.
+- `js/track-b-game.js` — chapter 10 catch-game rendering/execution, owns `gameRAF`/
+  `gameKeyHandler`/`gameHeld` as module-local state; exports `stopGame` (also called from
+  `core.js` on track switch and from `track-b-review.js`).
+- `js/track-b-exercise.js` — blanks/order exercise rendering + checking + Layer-1 rubric
+  matching (`findRubricLine`), owns `orderState` as module-local state. Imports `RUBRICS`/
+  `RUBRIC_CHAR_LABEL` from `rubrics.js` and `lessons` from `track-b-data.js`.
+- `js/track-b-review.js` — spaced-repetition review mode. Takes a `loadLesson` callback from
+  `track-b.js` (passed as a parameter, not imported) to avoid adding another import cycle.
+- `js/rubrics.js` — Layer-1 deterministic wrong-answer feedback content (see "Zero-budget plan"
+  below), keyed by `lesson.id`.
 
-This is a **cyclic import graph** (core.js ↔ track-a.js/track-b.js) and it works correctly
+All the `track-b-*.js` render/check functions take the DOM root as an explicit `container`
+parameter (passed down from `track-b.js`'s `mount()`) rather than reading it from a shared
+closure — this is what makes the split safe: each module's dependencies are visible in its own
+function signatures instead of being implicit shared mutable state. `track-b-exercise.js` and
+`track-b-game.js` and `track-b-review.js` do still own small pieces of module-local mutable
+state (`orderState`, `gameRAF`/`gameKeyHandler`/`gameHeld`, `reviewQueue`/`reviewIdx`/
+`reviewCorrect`/`container`/`state`/`onDone`) — each is only ever read/written from within the
+module that owns it, never reached into from outside. If you split out more of `track-b.js` in
+the future, keep to this pattern: pass shared DOM/data explicitly as parameters, and don't let
+a new module reach into another module's local state.
+
+This is also a **cyclic import graph** (core.js ↔ track-a.js/track-b.js) and it works correctly
 because all cross-module usage happens inside deferred function bodies (event handlers, calls
 triggered by `boot()` after the whole graph has loaded) — never at a module's top-level
 evaluation time. `speakText`/`fireConfetti` are `function` declarations (hoisted, no TDZ
@@ -56,9 +85,15 @@ reason — it would change the whole deployment model documented in `README.md`.
   `koko-kod-v4` → `v5`) on every change to `index.html`, `styles.css`, any `js/*.js`,
   `manifest.json`, or the icons. Otherwise devices that already installed the PWA keep serving
   stale cached files.
-- **Chapters/lessons must stay contiguous.** `chapters[]` in `track-b.js` partitions
+- **Chapters/lessons must stay contiguous.** `chapters[]` in `track-b-data.js` partitions
   `lessons[]` via `range: [start, end]` (1-indexed, matching `lesson.id`). If you add/remove
   lessons, make sure chapter ranges still exactly cover 1..lessons.length with no gaps/overlaps.
+  `lesson.id` is assigned programmatically (`lessons.forEach((l,i)=>{ l.id=i+1; })`) — don't
+  hardcode `id` in a lesson literal.
+- **Layer-1 rubric entries in `rubrics.js` are keyed by `lesson.id`, not by array index or
+  title.** If you insert/reorder/remove a lesson in `track-b-data.js`, every later lesson's
+  `id` shifts, silently orphaning or misattributing any `RUBRICS[oldId]` entries — re-check
+  `rubrics.js` keys whenever `lessons[]` changes length or order.
 - **Hidden/bonus content pattern**: the last level in `levels[]` / last chapter+lesson in
   `chapters[]`+`lessons[]` can be a "secret" bonus (see level 16, chapter 12) — mark with
   `secret:true`, and it auto-unlocks via the existing cascade logic (completing the previous
@@ -91,6 +126,20 @@ There's no test suite in the repo — validate manually before committing:
    `python3 -m http.server`, and drive the onboarding → track → level/lesson flow. This is how
    the app-shell bugs (window.storage-only persistence, the modal transform/animation conflict)
    were actually caught — static review alone missed them.
+
+## Zero-budget v2 plan
+
+`docs/zero-budget-plan.md` is a roadmap for adding real C++ execution (JSCPP in-browser),
+Supabase auth/sync, and a 3-layer feedback engine, sequenced as 6 independently-shippable
+phases, all on free tiers. As of 2026-07-02, only a slice of **Phase 3** exists: Layer-1
+deterministic rubric feedback (`js/rubrics.js`) for 6 of the 50 Track B lessons, matched
+against the *current* blanks/order exercise format (not the freeform-code format the phases
+assume — see the doc's "Where Track B stands today" section). Phases 0/2/6 (Supabase project,
+Gemini API key, Cloudflare Worker) each need an external account only the repo owner can
+create — don't attempt to provision these yourself. Phases 1 and 4 (JSCPP Run button,
+CodeMirror 6) need no new accounts and could be built next entirely client-side.
+`docs/phase3-rubrics-batch1.json` is the raw content batch `rubrics.js` was built from, kept
+for reference/reauthoring.
 
 ## Known non-issues (don't "fix" these)
 

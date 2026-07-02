@@ -5,6 +5,62 @@ for whoever (human or agent) picks this project back up later. Newest entries at
 
 ---
 
+## 2026-07-02 — Zero-budget v2 plan + Phase 3 rubric slice + track-b.js split
+
+**Owner**: DimitarAtanasov. Continued from a prior browser-based session where a "koko-kod v2
+zero-budget" roadmap was drafted (6 phases: JSCPP in-browser C++ execution, Supabase
+auth/sync, a 3-layer feedback engine, CodeMirror editor, a Playground generator, optional
+Gemini-free-tier AI layer — all on free tiers, no build step, no card required anywhere).
+
+### What actually shipped this session
+- **`docs/zero-budget-plan.md`**: the roadmap, fact-checked against the real repo and given a
+  Fable 5 prose-polish pass. Added a "Where Track B stands today" section because the original
+  plan's Phase 3 example assumed freeform-code rubric matching (regex/AST against arbitrary
+  text), but Track B's 50 lessons are currently all `blanks`/`order`/`live`/`draw`/`game`/`info`
+  structured exercises — no code editor, no Run button. That gap only becomes closed once
+  Phase 1 (Run button) and Phase 4 (CodeMirror) actually ship.
+- **`docs/phase3-rubrics-batch1.json`** + **`js/rubrics.js`**: a real slice of Phase 3 Layer 1
+  (deterministic wrong-answer feedback) — 15 in-character Luna/Bo/Mia lines covering every
+  plausible wrong choice across 6 of the 50 lessons (chapter 1 + start of chapter 2), authored
+  via a Fable 5 pass and wired into `checkExercise`'s failure branch in
+  `js/track-b-exercise.js`. A wrong answer now names the specific misconception (e.g. picking
+  `==` instead of `>` in the "Кой пази къщата" comparison lesson gets a line about equality vs.
+  comparison) instead of the generic "Не съвсем" message.
+- **Split `js/track-b.js`** (1422 lines) into an orchestrator + 6 section modules
+  (`track-b-data/live/draw/game/exercise/review.js`) at the user's explicit request ("I don't
+  want it to look like spaghetti"). See `CLAUDE.md`'s Architecture section for the full
+  breakdown and the parameter-passing pattern used to keep it safe (DOM `container` passed
+  explicitly instead of read from shared closure). Verified via `node --check` on every file,
+  a Node ES-module resolution test, and real Playwright browser runs through all 6 lesson
+  types (order/blanks/live/draw/game/review) — zero console/page errors both before and after
+  the split.
+- Bumped `service-worker.js` `CACHE_NAME` twice (v6 for rubrics.js, v7 for the full split) and
+  added every new file to `APP_SHELL`.
+- Two commits on `claude/koko-kod-improvements-pplama`, pushed to origin (not merged to
+  `main` — GitHub Pages only deploys `main`, so none of this is live yet; user still needs to
+  merge).
+
+### Explicit decision: declined "do everything in one pass"
+User asked whether the full 6-phase plan (including Supabase auth/login and Gemini free-tier
+AI) could be implemented in one pass. Declined, for two reasons given directly to the user:
+(1) Phase 0 (Supabase project), Phase 6 (Gemini API key), and the Cloudflare Worker each
+require creating an external account and handing back credentials — not something an agent
+should provision or hold unsupervised; (2) bundling auth + code execution + editor swap + AI
+into one giant change defeats the entire point of the plan's 6-phase independently-shippable
+structure, which exists specifically so a regression is traceable to one change, not five at
+once. Phases 1 (JSCPP Run button) and 4 (CodeMirror 6) need no new accounts and are the
+natural next slice if continuing this roadmap — both are pure frontend, CDN ESM, no build step.
+
+### Environment gotcha repeated this session
+Mid-session, the sandbox environment reset (installed `node_modules`/Playwright and a scratch
+test directory both vanished without warning, mid-verification) — same class of issue as the
+2026-07-01 session's environment reset noted below. Second occurrence — worth assuming this
+can happen again in this environment and not being surprised when a previously-installed
+scratch tool (Playwright, a temp http server) is suddenly gone; just recreate it rather than
+treating it as a real failure.
+
+---
+
 ## 2026-07-01 — Major overhaul session
 
 **Owner**: DimitarAtanasov (miteto1990@gmail.com). Repo started as a single working
