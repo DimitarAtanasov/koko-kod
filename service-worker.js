@@ -1,7 +1,7 @@
 // Коко Код Академия — Service Worker
 // Cache-first app-shell strategy so the app works offline once installed.
 // Bump CACHE_NAME on every real content update to force a refresh for returning users.
-const CACHE_NAME = 'koko-kod-v5';
+const CACHE_NAME = 'koko-kod-v7';
 const APP_SHELL = [
   './index.html',
   './manifest.json',
@@ -9,6 +9,13 @@ const APP_SHELL = [
   './js/core.js',
   './js/track-a.js',
   './js/track-b.js',
+  './js/track-b-data.js',
+  './js/track-b-live.js',
+  './js/track-b-draw.js',
+  './js/track-b-game.js',
+  './js/track-b-exercise.js',
+  './js/track-b-review.js',
+  './js/rubrics.js',
   './icon-192.png',
   './icon-512.png'
 ];
